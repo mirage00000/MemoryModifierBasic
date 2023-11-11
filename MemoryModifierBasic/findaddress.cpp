@@ -1,6 +1,10 @@
 #include <iostream>
 #include <Windows.h>
+#include <vector>
 #include <TlHelp32.h>
+#include "findaddress.h"
+#include <sstream>
+#include <iomanip>
 
 BOOLEAN
 FindProcessIdByName(
@@ -133,9 +137,16 @@ FindAddressOfByteArray(
     return TRUE;
 }
 
-int main()
+
+int findaddress(const std::string& str)
 {
-    LPCWSTR     szProcessName = L"notepad.exe";
+
+    int bufferSize = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, nullptr, 0);
+
+    wchar_t* wideStr = new wchar_t[bufferSize];
+    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, wideStr, bufferSize);
+
+    LPCWSTR     szProcessName = wideStr;
     DWORD       dwProcessId = NULL;
 
     if (FALSE == FindProcessIdByName(szProcessName, &dwProcessId)) {
@@ -145,8 +156,26 @@ int main()
 
         return 0;
     }
+    // beginning of user input
+    std::cout << "Enter the size of the byte array (e.g., 3): ";
+    int size;
+    std::cin >> size;
 
-    BYTE lpData[] = { 0x01, 0x01, 0x01 };
+    BYTE* lpData = new BYTE[size];
+
+    std::cout << "Enter the bytes (e.g., 01 01 01): ";
+    for (int i = 0; i < size; ++i) {
+        int byteValue;
+        std::cin >> std::hex >> byteValue;
+        lpData[i] = static_cast<BYTE>(byteValue);
+    }
+    printf("You entered: ");
+    for (size_t i = 0; i < size; i++) {
+        printf("%02X ", static_cast<int>(lpData[i]));
+    }
+    printf("\n");
+    //end of user input
+
     HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwProcessId);
 
     if (NULL == hProc) {
