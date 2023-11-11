@@ -2,61 +2,143 @@
 #include <Windows.h>
 #include <TlHelp32.h>
 #include <string>
+#include <vector>
+#include <memory>
+#include <stdexcept>
 
 struct Data {
     int intValue;
     float floatValue;
 };
 
+struct FoundAddresses {
+    std::vector<UINT_PTR> Addresses;
+};
+
+bool FindAddressOfByteArray(FoundAddresses& foundAddresses, HANDLE processHandle, const BYTE* data, size_t dataSize, bool skipCompleteMatches) {
+    if (!processHandle || !data || dataSize == 0) {
+        return false;
+    }
+
+    DWORD dwReadableMask = (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY);
+    DWORD dwProtectedMask = (PAGE_GUARD | PAGE_NOACCESS);
+
+    SYSTEM_INFO SysInfo;
+    MEMORY_BASIC_INFORMATION Mbi;
+
+    ZeroMemory(&SysInfo, sizeof(SysInfo));
+    ZeroMemory(&Mbi, sizeof(Mbi));
+
+    GetSystemInfo(&SysInfo);
+
+    UINT_PTR ulCurrAddr = reinterpret_cast<UINT_PTR>(SysInfo.lpMinimumApplicationAddress);
+
+    while (sizeof(Mbi) == VirtualQueryEx(processHandle, reinterpret_cast<LPVOID>(ulCurrAddr), &Mbi, sizeof(Mbi)) &&
+        ulCurrAddr <= reinterpret_cast<UINT_PTR>(SysInfo.lpMaximumApplicationAddress)) {
+
+        if ((dwReadableMask & Mbi.Protect) && !(dwProtectedMask & Mbi.Protect)) {
+            std::vector<BYTE> buffer(Mbi.RegionSize);
+
+            SIZE_T ulBytesRead;
+            if (ReadProcessMemory(processHandle, reinterpret_cast<LPVOID>(ulCurrAddr), buffer.data(), Mbi.RegionSize, &ulBytesRead) && ulBytesRead == Mbi.RegionSize) {
+
+                for (size_t i = 0; i < Mbi.RegionSize; ++i) {
+                    if (memcmp(buffer.data() + i, data, dataSize) == 0) {
+                        foundAddresses.Addresses.push_back(ulCurrAddr + i);
+
+                        if (skipCompleteMatches) {
+                            i += dataSize;
+                        }
+                    }
+                }
+            }
+        }
+
+        ulCurrAddr = reinterpret_cast<UINT_PTR>(Mbi.BaseAddress) + Mbi.RegionSize;
+    }
+
+    return true;
+}
+
+void search_for_array(HANDLE hProcess) {
+    try {
+        std::cout << "Enter the byte array (e.g., 0x01 0x02 0x03 0xff): ";
+        std::vector<BYTE> userByteArray;
+        int byteValue;
+        while (std::cin >> std::hex >> byteValue) {
+            userByteArray.push_back(static_cast<BYTE>(byteValue));
+        }
+
+        std::cin.clear();
+        std::cin.ignore(10000, '\n');
+
+        FoundAddresses foundAddresses;
+        if (!FindAddressOfByteArray(foundAddresses, hProcess, userByteArray.data(), userByteArray.size(), true)) {
+            throw std::runtime_error("Could not search for the byte array!");
+        }
+
+        std::cout << "Found " << foundAddresses.Addresses.size() << " addresses:" << std::endl;
+        for (const auto& address : foundAddresses.Addresses) {
+            std::cout << "0x" << std::hex << address << std::endl;
+        }
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+}
+
 int main() {
     std::cout << "Welcome to the memory modification tool!\n";
-
     std::string winTitle;
     std::cout << "Enter the window title: ";
     std::getline(std::cin, winTitle);
 
-    int bufferSize = MultiByteToWideChar(CP_UTF8, 0, winTitle.c_str(), -1, nullptr, 0);
-    wchar_t* wideStr = new wchar_t[bufferSize];
-    MultiByteToWideChar(CP_UTF8, 0, winTitle.c_str(), -1, wideStr, bufferSize);
-    LPCWSTR winTitleWide = wideStr;
+    std::wstring winTitleWide(winTitle.begin(), winTitle.end());
+    HWND hWnd = FindWindow(0, winTitleWide.c_str());
 
-    std::string modAddress;
-    std::cout << "Enter the address: ";
-    std::cin >> modAddress;
-    unsigned long ulModAddress = std::stoul(modAddress, nullptr, 16);
+    try {
+        if (!hWnd) {
+            throw std::runtime_error("Process not found");
+        }
 
-    int bytesToMod;
-    std::cout << "Enter the bytes to modify: ";
-    std::cin >> std::hex >> bytesToMod;
-
-    HWND hWnd = FindWindow(0, winTitleWide);
-    if (hWnd == NULL) {
-        MessageBox(0, L"Error! The script couldn't find a corresponding PID for the window. Make sure you specified the title correctly.", L"Error!", MB_OK | MB_ICONERROR);
-    }
-    else {
         DWORD procId;
         GetWindowThreadProcessId(hWnd, &procId);
         HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, procId);
+
         if (!hProcess) {
-            MessageBox(NULL, L"Cannot open process!", L"Error!", MB_OK | MB_ICONERROR);
+            throw std::runtime_error("Failed to open a handle to the process");
+        }
+
+        std::cout << "\nBeginning of the byte array search function\n";
+        search_for_array(hProcess);
+        std::cout << "End of the byte search array function\n\n";
+
+        std::string modAddress;
+        std::cout << "Enter the address: ";
+        std::cin >> modAddress;
+        unsigned long ulModAddress = std::stoul(modAddress, nullptr, 16);
+
+        int bytesToMod;
+        std::cout << "Enter the bytes to modify (e.g., 0x909090: ";
+        std::cin >> std::hex >> bytesToMod;
+
+        Data data;
+        data.intValue = bytesToMod;
+
+        std::cout << "You entered: " << bytesToMod << std::endl;
+        std::cout << "Result: ";
+        if (WriteProcessMemory(hProcess, reinterpret_cast<LPVOID>(ulModAddress), &data, sizeof(data), NULL)) {
+            std::cout << "Memory written successfully!";
         }
         else {
-            Data data;
-            data.intValue = bytesToMod;
-
-            std::cout << "You entered: " << bytesToMod << std::endl;
-
-            if (WriteProcessMemory(hProcess, reinterpret_cast<LPVOID>(ulModAddress), &data, sizeof(data), NULL)) {
-                MessageBox(NULL, L"Done! Memory written successfully.", L"Success!", MB_OK | MB_ICONINFORMATION);
-            }
-            else {
-                MessageBox(NULL, L"Error! Cannot write to memory.", L"Error!", MB_OK | MB_ICONERROR);
-            }
-
-            CloseHandle(hProcess);
+            std::cout << "Unable to write process' memory.";
         }
+
+        CloseHandle(hProcess);
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
     }
 
-    delete[] wideStr;
     return 0;
 }
