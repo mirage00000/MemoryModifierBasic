@@ -153,11 +153,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="findaddress.cpp" />
     <ClCompile Include="MemoryModifierBasic.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="findaddress.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
