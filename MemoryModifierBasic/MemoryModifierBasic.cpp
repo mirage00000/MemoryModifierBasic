@@ -99,6 +99,7 @@ int main() {
     try {
         if (!hWnd) {
             throw std::runtime_error("Process not found");
+            getchar();
         }
 
         DWORD procId;
@@ -107,6 +108,7 @@ int main() {
 
         if (!hProcess) {
             throw std::runtime_error("Failed to open a handle to the process");
+            getchar();
         }
 
         std::cout << "\nBeginning of the byte array search function\n";
@@ -119,25 +121,26 @@ int main() {
         unsigned long ulModAddress = std::stoul(modAddress, nullptr, 16);
 
         int bytesToMod;
-        std::cout << "Enter the bytes to modify (e.g., 0x909090: ";
+        std::cout << "Enter the bytes to modify (e.g., 0xff030201): ";
         std::cin >> std::hex >> bytesToMod;
 
         Data data;
         data.intValue = bytesToMod;
-
-        std::cout << "You entered: " << bytesToMod << std::endl;
         std::cout << "Result: ";
         if (WriteProcessMemory(hProcess, reinterpret_cast<LPVOID>(ulModAddress), &data, sizeof(data), NULL)) {
             std::cout << "Memory written successfully!";
+            getchar();
         }
         else {
             std::cout << "Unable to write process' memory.";
+            getchar();
         }
 
         CloseHandle(hProcess);
     }
     catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
+        getchar();
     }
 
     return 0;
