@@ -120,26 +120,32 @@ int main() {
         std::cin >> modAddress;
         unsigned long ulModAddress = std::stoul(modAddress, nullptr, 16);
 
-        int bytesToMod;
+        unsigned long bytesToMod;
         std::cout << "Enter the bytes to modify (e.g., 0xff030201): ";
         std::cin >> std::hex >> bytesToMod;
 
         Data data;
         data.intValue = bytesToMod;
-        std::cout << "Result: ";
+        std::cout << "\nResult: ";
         if (WriteProcessMemory(hProcess, reinterpret_cast<LPVOID>(ulModAddress), &data, sizeof(data), NULL)) {
-            std::cout << "Memory written successfully!";
+            std::cout << "Memory written successfully!\n";
+            std::cin.clear();
+            std::cin.ignore(10000, '\n');
             getchar();
         }
         else {
-            std::cout << "Unable to write process' memory.";
+            std::cout << "Unable to write process' memory.\n";
+            std::cin.clear();
+            std::cin.ignore(10000, '\n');
             getchar();
         }
 
         CloseHandle(hProcess);
     }
     catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << "\nError: " << e.what() << std::endl;
+        std::cin.clear();
+        std::cin.ignore(10000, '\n');
         getchar();
     }
 
